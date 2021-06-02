@@ -1215,9 +1215,12 @@ The application is free to ignore certain potential error scenarios and concurre
 
 #### ACID
 
-* **Atomicity.** Is _not_ about concurrency. It is what happens if a client wants to make several writes, but a fault occurs after some of the writes have been processed. _Abortability_ would have been a better term than _atomicity_.
+* **Atomicity.** Is _not_ about concurrency. It is what happens if a client wants to make several writes, but a fault occurs after some of the writes have been processed - then
+the transaction is aborted and the database must discard or undo any writes it has made so far in that transaction. _Abortability_ would have been a better term than _atomicity_.
 * **Consistency.** _Invariants_ on your data must always be true. The idea of consistency depends on the application's notion of invariants. Atomicity, isolation, and durability are properties of the database, whereas consistency (in an ACID sense) is a property of the application.
-* **Isolation.** Concurrently executing transactions are isolated from each other. It's also called _serializability_, each transaction can pretend that it is the only transaction running on the entire database, and the result is the same as if they had run _serially_ (one after the other).
+* **Isolation.** Concurrently executing transactions are isolated from each other - they cannot step on each other’s toes. It's also called _serializability_, each transaction can pretend that it is the only transaction running on the entire database, and the result is the same as if they had run _serially_ (one after the other).
+![image](https://user-images.githubusercontent.com/1840450/120526879-b810de00-c3a7-11eb-9634-4575e30eb386.png)
+
 * **Durability.** Once a transaction has committed successfully, any data it has written will not be forgotten, even if there is a hardware fault or the database crashes. In a single-node database this means the data has been written to nonvolatile storage. In a replicated database it means the data has been successfully copied to some number of nodes.
 
 Atomicity can be implemented using a log for crash recovery, and isolation can be implemented using a lock on each object, allowing only one thread to access an object at any one time.
@@ -1248,9 +1251,13 @@ It makes two guarantees:
 1. When reading from the database, you will only see data that has been committed (no _dirty reads_). Writes by a transaction only become visible to others when that transaction commits.
 2. When writing to the database, you will only overwrite data that has been committed (no _dirty writes_). Dirty writes are prevented usually by delaying the second write until the first write's transaction has committed or aborted.
 
-Most databases prevent dirty writes by using row-level locks that hold the lock until the transaction is committed or aborted. Only one transaction can hold the lock for any given object.
+**Most databases prevent dirty writes by using row-level locks that hold the lock until the transaction is committed or aborted.** Only one transaction can hold the lock for any given object.
+
+![image](https://user-images.githubusercontent.com/1840450/120534698-235eae00-c3b0-11eb-975e-d2b8e138ec3d.png)
 
 On dirty reads, requiring read locks does not work well in practice as one long-running write transaction can force many read-only transactions to wait. For every object that is written, the database remembers both the old committed value and the new value set by the transaction that currently holds the write lock. While the transaction is ongoing, any other transactions that read the object are simply given the old value.
+
+![image](https://user-images.githubusercontent.com/1840450/120534753-33768d80-c3b0-11eb-87a0-571ef57b25ed.png)
 
 #### Snapshot isolation and repeatable read
 
@@ -1274,6 +1281,9 @@ How do indexes work in a multi-version database? One option is to have the index
 
 Snapshot isolation is called _serializable_ in Oracle, and _repeatable read_ in PostgreSQL and MySQL.
 
+![image](https://user-images.githubusercontent.com/1840450/120538137-1e036280-c3b4-11eb-9d07-61a9b4120dac.png)
+
+
 #### Preventing lost updates
 
 This might happen if an application reads some value from the database, modifies it, and writes it back. If two transactions do this concurrently, one of the modifications can be lost (later write _clobbers_ the earlier write).
@@ -1291,6 +1301,8 @@ MongoDB provides atomic operations for making local modifications, and Redis pro
 ##### Explicit locking
 
 The application explicitly lock objects that are going to be updated.
+
+![image](https://user-images.githubusercontent.com/1840450/120538972-1e502d80-c3b5-11eb-8b8a-5296af96d8e1.png)
 
 ##### Automatically detecting lost updates
 
@@ -1311,35 +1323,13 @@ UPDATE wiki_pages SET content = 'new content'
 
 With multi-leader or leaderless replication, compare-and-set do not apply.
 
-A common approach in replicated databases is to allow concurrent writes to create several conflicting versions of a value (also know as _siblings_), and to use application code or special data structures to resolve and merge these versions after the fact.
+A common approach in replicated databases is to allow concurrent writes to create several conflicting versions of a value (also know as _siblings_), and to use application code or special data structures to *resolve and merge these versions after the fact.*
 
 #### Write skew and phantoms
 
 Imagine Alice and Bob are two on-call doctors for a particular shift. Imagine both the request to leave because they are feeling unwell. Unfortunately they happen to click the button to go off call at approximately the same time.
 
-    ALICE                                   BOB
-
-    ┌─ BEGIN TRANSACTION                    ┌─ BEGIN TRANSACTION
-    │                                       │
-    ├─ currently_on_call = (                ├─ currently_on_call = (
-    │   select count(*) from doctors        │    select count(*) from doctors
-    │   where on_call = true                │    where on_call = true
-    │   and shift_id = 1234                 │    and shift_id = 1234
-    │  )                                    │  )
-    │  // now currently_on_call = 2         │  // now currently_on_call = 2
-    │                                       │
-    ├─ if (currently_on_call  2) {          │
-    │    update doctors                     │
-    │    set on_call = false                │
-    │    where name = 'Alice'               │
-    │    and shift_id = 1234                ├─ if (currently_on_call >= 2) {
-    │  }                                    │    update doctors
-    │                                       │    set on_call = false
-    └─ COMMIT TRANSACTION                   │    where name = 'Bob'  
-                                            │    and shift_id = 1234
-                                            │  }
-                                            │
-                                            └─ COMMIT TRANSACTION
+![image](https://user-images.githubusercontent.com/1840450/120540084-44c29880-c3b6-11eb-9753-8d1d4ea1a93e.png)
 
 Since database is using snapshot isolation, both checks return 2. Both transactions commit, and now no doctor is on call. The requirement of having at least one doctor has been violated.
 
@@ -1363,14 +1353,17 @@ Ways to prevent write skew are a bit more restricted:
 
   COMMIT;
   ```
+  
+  ![image](https://user-images.githubusercontent.com/1840450/120540356-98cd7d00-c3b6-11eb-90ac-21c634b927f8.png)
+
 
 ### Serializability
 
 This is the strongest isolation level. It guarantees that even though transactions may execute in parallel, the end result is the same as if they had executed one at a time, _serially_, without concurrency. Basically, the database prevents _all_ possible race conditions.
 
 There are three techniques for achieving this:
-* Executing transactions in serial order
-* Two-phase locking
+* Executing transactions in serial order - Actual serial execution
+* Two-phase locking - Two-phase locking (2PL)
 * Serializable snapshot isolation.
 
 #### Actual serial execution
