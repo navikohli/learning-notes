@@ -767,6 +767,12 @@ Reasons why you might want to replicate data:
 
 The difficulty in replication lies in handling _changes_ to replicated data. Popular algorithms for replicating changes between nodes: _single-leader_, _multi-leader_, and _leaderless_ replication.
 
+**Three main approaches to replication:**
+1. *Single-leader replication* - Clients send all writes to a single node (the leader), which sends a stream of data change events to the other replicas (followers). Reads can be performed on any replica, but reads from followers might be stale.
+2. *Multi-leader replication* - Clients send each write to one of several leader nodes, any of which can accept writes. The leaders send streams of data change events to each other and to any follower nodes.
+3. *Leaderless replication* - Clients send each write to several nodes, and read from several nodes in parallel in order to detect and correct nodes with stale data.
+
+
 ### Leaders and followers
 
 Each node that stores a copy of the database is called a _replica_.
@@ -923,11 +929,14 @@ A natural extension is to allow more than one node to accept writes (_multi-lead
 
 #### Use cases for multi-leader replication
 
-It rarely makes sense to use multi-leader setup within a single datacenter.
+It rarely makes sense to use multi-leader setup within a single datacenter, because the benefits rarely outweigh the added complexity.
 
 ##### Multi-datacenter operation
 
 You can have a leader in _each_ datacenter. Within each datacenter, regular leader-follower replication is used. Between datacenters, each datacenter leader replicates its changes to the leaders in other datacenters.
+
+![image](https://user-images.githubusercontent.com/1840450/120429240-0c35a700-c343-11eb-942b-2b8ed7153056.png)
+
 
 Compared to a single-leader replication model deployed in multi-datacenters
 * **Performance.** With single-leader, every write must go across the internet to wherever the leader is, adding significant latency. In multi-leader every write is processed in the local datacenter and replicated asynchronously to other datacenters. The network delay is hidden from users and perceived performance may be better.
@@ -944,7 +953,7 @@ If you have an application that needs to continue to work while it is disconnect
 
 CouchDB is designed for this mode of operation.
 
-#### Collaborative editing
+##### Collaborative editing
 
 _Real-time collaborative editing_ applications allow several people to edit a document simultaneously. Like Etherpad or Google Docs.
 
@@ -958,6 +967,9 @@ For faster collaboration, you may want to make the unit of change very small (li
 
 The biggest problem with multi-leader replication is when conflict resolution is required. This problem does not happen in a single-leader database.
 
+![image](https://user-images.githubusercontent.com/1840450/120429484-73535b80-c343-11eb-98ef-87f4fd452372.png)
+
+
 ##### Synchronous vs asynchronous conflict detection
 
 In single-leader the second writer can be blocked and wait the first one to complete, forcing the user to retry the write. On multi-leader if both writes are successful, the conflict is only detected asynchronously later in time.
@@ -966,9 +978,9 @@ If you want synchronous conflict detection, you might as well use single-leader 
 
 ##### Conflict avoidance
 
-The simplest strategy for dealing with conflicts is to avoid them. If all writes for a particular record go through the sae leader, then conflicts cannot occur.
+The simplest strategy for dealing with conflicts is to avoid them. If all writes for a particular record go through the same leader, then conflicts cannot occur.
 
-On an application where a user can edit their own data, you can ensure that requests from a particular user are always routed to the same datacenter and use the leader in that datacenter for reading and writing.
+On an application where a user can edit their own data, you can **ensure that requests from a particular user are always routed to the same datacenter** and use the leader in that datacenter for reading and writing.
 
 ##### Converging toward a consistent state
 
@@ -979,7 +991,7 @@ In multi-leader, it's not clear what the final value should be.
 The database must resolve the conflict in a _convergent_ way, all replicas must arrive a the same final value when all changes have been replicated.
 
 Different ways of achieving convergent conflict resolution.
-* Five each write a unique ID (timestamp, long random number, UUID, or a has of the key and value), pick the write with the highest ID as the _winner_ and throw away the other writes. This is known as _last write wins_ (LWW) and it is dangerously prone to data loss.
+* Give each write a unique ID (timestamp, long random number, UUID, or a has of the key and value), pick the write with the highest ID as the _winner_ and throw away the other writes. This is known as _last write wins_ (LWW) and it is dangerously prone to data loss.
 * Give each replica a unique ID, writes that originated at a higher-numbered replica always take precedence. This approach also implies data loss.
 * Somehow merge the values together.
 * Record the conflict and write application code that resolves it a to some later time (perhaps prompting the user).
@@ -994,6 +1006,8 @@ Multi-leader replication tools let you write conflict resolution logic using app
 #### Multi-leader replication topologies
 
 A _replication topology_ describes the communication paths along which writes are propagated from one node to another.
+
+![image](https://user-images.githubusercontent.com/1840450/120429918-32a81200-c344-11eb-8c5a-2091cbda7320.png)
 
 The most general topology is _all-to-all_ in which every leader sends its writes to every other leader. MySQL uses _circular topology_, where each nodes receives writes from one node and forwards those writes to another node. Another popular topology has the shape of a _star_, one designated node forwards writes to all of the other nodes.
 
@@ -1017,7 +1031,7 @@ Eventually, all the data is copied to every replica. After a unavailable node co
 
 If there are _n_ replicas, every write must be confirmed by _w_ nodes to be considered successful, and we must query at least _r_ nodes for each read. As long as _w_ + _r_ > _n_, we expect to get an up-to-date value when reading. _r_ and _w_ values are called _quorum_ reads and writes. Are the minimum number of votes required for the read or write to be valid.
 
-A common choice is to make _n_ and odd number (typically 3 or 5) and to set _w_ = _r_ = (_n_ + 1)/2 (rounded up).
+A common choice is to make _n_ an odd number (typically 3 or 5) and to set _w_ = _r_ = (_n_ + 1)/2 (rounded up).
 
 Limitations:
 * Sloppy quorum, the _w_ writes may end up on different nodes than the _r_ reads, so there is no longer a guaranteed overlap.
@@ -1030,7 +1044,7 @@ Limitations:
 
 #### Sloppy quorums and hinted handoff
 
-Leaderless replication may be appealing for use cases that require high availability and low latency, and that can tolerate occasional stale reads.
+*Leaderless replication may be appealing for use cases that require high availability and low latency, and that can tolerate occasional stale reads.*
 
 It's likely that the client won't be able to connect to _some_ database nodes during a network interruption.
 * Is it better to return errors to all requests for which we cannot reach quorum of _w_ or _r_ nodes?
@@ -1050,6 +1064,9 @@ Each write from a client is sent to all replicas, regardless of datacenter, but 
 
 In order to become eventually consistent, the replicas should converge toward the same value. If you want to avoid losing data, you application developer, need to know a lot about the internals of your database's conflict handling.
 
+![image](https://user-images.githubusercontent.com/1840450/120431779-f629e580-c346-11eb-9465-8345e05c249c.png)
+
+
 * **Last write wins (discarding concurrent writes).** Even though the writes don' have a natural ordering, we can force an arbitrary order on them. We can attach a timestamp to each write and pick the most recent. There are some situations such caching on which lost writes are acceptable. If losing data is not acceptable, LWW is a poor choice for conflict resolution.
 * **The "happens-before" relationship and concurrency.** Whether one operation happens before another operation is the key to defining what concurrency means. **We can simply say that to operations are _concurrent_ if neither happens before the other.** Either A happened before B, or B happened before A, or A and B are concurrent.
 
@@ -1057,9 +1074,14 @@ In order to become eventually consistent, the replicas should converge toward th
 
 The server can determine whether two operations are concurrent by looking at the version numbers.
 * The server maintains a version number for every key, increments the version number every time that key is written, and stores the new version number along the value written.
-* Client reads a key, the server returns all values that have not been overwrite, as well as the latest version number. A client must read a key before writing.
+* Client reads a key, the server returns all values that have not been overwriten, as well as the latest version number. A client must read a key before writing.
 * Client writes a key, it must include the version number from the prior read, and it must merge together all values that it received in the prior read.
 * Server receives a write with a particular version number, it can overwrite all values with that version number or below, but it must keep all values with a higher version number.
+
+![image](https://user-images.githubusercontent.com/1840450/120432001-47d27000-c347-11eb-81a2-381fe56ee27e.png)
+
+![image](https://user-images.githubusercontent.com/1840450/120432043-53be3200-c347-11eb-9501-98c8c8095d7f.png)
+
 
 ##### Merging concurrently written values
 
@@ -1087,12 +1109,16 @@ Basically, each partition is a small database of its own.
 
 The main reason for wanting to partition data is _scalability_, query load can be load cabe distributed across many processors. Throughput can be scaled by adding more nodes.
 
+What we call a partition here is called a shard in MongoDB, Elasticsearch, and SolrCloud; it’s known as a region in HBase, a tablet in Bigtable, a vnode in Cassandra and Riak, and a vBucket in Couchbase. However, partitioning is the most established term, so we’ll stick with that.
 
 ### Partitioning and replication
 
 Each record belongs to exactly one partition, it may still be stored on several nodes for fault tolerance.
 
 A node may store more than one partition.
+
+![image](https://user-images.githubusercontent.com/1840450/120433848-b9132280-c349-11eb-9527-18c4f9c87462.png)
+
 
 ### Partition of key-value data
 
@@ -1161,13 +1187,17 @@ It can be good to have a human in the loop for rebalancing. You may avoid operat
 ### Request routing
 
 This problem is also called _service discovery_. There are different approaches:
-1. Allow clients to contact any node and make them handle the request directly, or forward the request to the appropriate node.
+1. Allow clients to contact any node and make them handle the request directly, or forward the request to the appropriate node. (Gossip Protocol)
 2. Send all requests from clients to a routing tier first that acts as a partition-aware load balancer.
 3. Make clients aware of the partitioning and the assignment of partitions to nodes.
 
+![image](https://user-images.githubusercontent.com/1840450/120440211-54f45c80-c351-11eb-9a03-1b2e4bfeeea3.png)
+
 In many cases the problem is: how does the component making the routing decision learn about changes in the assignment of partitions to nodes?
 
-Many distributed data systems rely on a separate coordination service such as ZooKeeper to keep track of this cluster metadata. Each node registers itself in ZooKeeper, and ZooKeeper maintains the authoritative mapping of partitions to nodes. The routing tier or the partitioning-aware client, can subscribe to this information in ZooKeeper. HBase, SolrCloud and Kafka use ZooKeeper to track partition assignment. MongoDB relies on its own _config server_. Cassandra and Riak take a different approach: they use a _gossip protocol_.
+Many distributed data systems *rely on a separate coordination service such as ZooKeeper to keep track of this cluster metadata*. Each node registers itself in ZooKeeper, and ZooKeeper maintains the authoritative mapping of partitions to nodes. The routing tier or the partitioning-aware client, can subscribe to this information in ZooKeeper. HBase, SolrCloud and Kafka use ZooKeeper to track partition assignment. MongoDB relies on its own _config server_. Cassandra and Riak take a different approach: they use a _gossip protocol_. Requests can be sent to any node, and that node forwards them to the appropriate node for the requested partition.
+
+![image](https://user-images.githubusercontent.com/1840450/120440285-6178b500-c351-11eb-89b3-25d3d9bc460c.png)
 
 #### Parallel query execution
 
