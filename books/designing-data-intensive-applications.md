@@ -542,6 +542,8 @@ _Data analytics_ has very different access patterns. A query would need to scan 
 
 These queries are often written by business analysts, and fed into reports. This pattern became known for _online analytics processing_ (OLAP).
 
+![image](https://user-images.githubusercontent.com/1840450/120416588-64f94580-c32b-11eb-8cb1-b7a23ca8b197.png)
+
 
 #### Data warehousing
 
@@ -566,6 +568,9 @@ Fact tables often have over 100 columns, sometimes several hundred. Dimension ta
 In a row-oriented storage engine, when you do a query that filters on a specific field, the engine will load all those rows with all their fields into memory, parse them and filter out the ones that don't meet the requirement. This can take a long time.
 
 _Column-oriented storage_ is simple: don't store all the values from one row together, but store all values from each _column_ together instead. If each column is stored in a separate file, a query only needs to read and parse those columns that are used in a query, which can save a lot of work.
+
+![image](https://user-images.githubusercontent.com/1840450/120416967-0ed8d200-c32c-11eb-9246-003d64c21f3e.png)
+
 
 Column-oriented storage often lends itself very well to compression as the sequences of values for each column look quite repetitive, which is a good sign for compression. A technique that is particularly effective in data warehouses is _bitmap encoding_.
 
@@ -600,8 +605,8 @@ Old and new versions of the code, and old and new data formats, may potentially 
 ### Formats for encoding data
 
 Two different representations:
-* In memory
-* When you want to write data to a file or send it over the network, you have to encode it
+* In memory (objects, structs, lists, arrays, hash tables, trees, and so on.)
+* When you want to write data to a file or send it over the network, you have to encode it (JSON, XML, and CSV)
 
 Thus, you need a translation between the two representations. In-memory representation to byte sequence is called _encoding_ (_serialisation_ or _marshalling_), and the reverse is called _decoding_ (_parsing_, _deserialisation_ or _unmarshalling_).
 
@@ -643,6 +648,9 @@ What about changing the data type of a field? There is a risk that values will l
 ##### Avro
 
 Apache Avro is another binary format that has two schema languages, one intended for human editing (Avro IDL), and one (based on JSON) that is more easily machine-readable.
+
+![image](https://user-images.githubusercontent.com/1840450/120418225-1dc08400-c32e-11eb-9c4f-c06d71fc7bd9.png)
+
 
 You go go through the fields in the order they appear in the schema and use the schema to tell you the datatype of each field. Any mismatch in the schema between the reader and the writer would mean incorrectly decoded data.
 
@@ -729,7 +737,7 @@ One process sends a message to a named _queue_ or _topic_ and the broker ensures
 
 Message brokers typically don't enforce a particular data model, you can use any encoding format.
 
-An _actor model_ is a programming model for concurrency in a single process. Rather than dealing with threads (and their complications), logic is encapsulated in _actors_. Each actor typically represent one client or entity, it may have some local state, and it communicates with other actors by sending and receiving asynchronous messages. Message deliver is not guaranteed. Since each actor processes only one message at a time, it doesn't need to worry about threads.
+An __actor model__ is a programming model for concurrency in a single process. Rather than dealing with threads (and their complications), logic is encapsulated in _actors_. Each actor typically represent one client or entity, it may have some local state, and it communicates with other actors by sending and receiving asynchronous messages. Message deliver is not guaranteed. Since each actor processes only one message at a time, it doesn't need to worry about threads.
 
 In _distributed actor frameworks_, this programming model is used to scale an application across multiple nodes. It basically integrates a message broker and the actor model into a single framework.
 
@@ -738,6 +746,7 @@ In _distributed actor frameworks_, this programming model is used to scale an ap
 * In _Erlang OTP_ it is surprisingly hard to make changes to record schemas.
 
 ---
+# Distributed Data
 
 What happens if multiple machines are involved in storage and retrieval of data?
 
@@ -745,6 +754,9 @@ Reasons for distribute a database across multiple machines:
 * Scalability
 * Fault tolerance/high availability
 * Latency, having servers at various locations worldwide
+
+![image](https://user-images.githubusercontent.com/1840450/120422283-ed7ce380-c335-11eb-9794-e6d5873e96d1.png)
+
 
 ## Replication
 
@@ -766,6 +778,9 @@ Every write to the database needs to be processed by every replica. The most com
 
 MySQL, Oracle Data Guard, SQL Server's AlwaysOn Availability Groups, MongoDB, RethinkDB, Espresso, Kafka and RabbitMQ are examples of these kind of databases.
 
+![image](https://user-images.githubusercontent.com/1840450/120422349-1309ed00-c336-11eb-813c-fc02896546f1.png)
+
+
 #### Synchronous vs asynchronous
 
 **The advantage of synchronous replication is that the follower is guaranteed to have an up-to-date copy of the data that is consistent with the leader. The disadvantage is that it the synchronous follower doesn't respond, the write cannot be processed.**
@@ -784,7 +799,7 @@ Setting up a follower can usually be done without downtime. The process looks li
 3. Follower requests data changes that have happened since the snapshot was taken
 4. Once follower processed the backlog of data changes since snapshot, it has _caught up_.
 
-#### Handling node outages
+### Handling node outages
 
 How does high availability works with leader-based replication?
 
@@ -809,9 +824,9 @@ Things that could go wrong:
 
 For these reasons, some operation teams prefer to perform failovers manually, even if the software supports automatic failover.
 
-#### Implementation of replication logs
+### Implementation of replication logs (for leader based replication)
 
-##### Statement-based replication
+#### Statement-based replication
 
 The leader logs every _statement_ and sends it to its followers (every `INSERT`, `UPDATE` or `DELETE`).
 
@@ -822,7 +837,7 @@ This type of replication has some problems:
 
 A solution to this is to replace any nondeterministic function with a fixed return value in the leader.
 
-##### Write-ahead log (WAL) shipping
+#### Write-ahead log (WAL) shipping
 
 The log is an append-only sequence of bytes containing all writes to the database. The leader can send it to its followers. This way of replication is used in PostgresSQL and Oracle.
 
@@ -830,7 +845,7 @@ The main disadvantage is that the log describes the data at a very low level (li
 
 Usually is not possible to run different versions of the database in leaders and followers. This can have a big operational impact, like making it impossible to have a zero-downtime upgrade of the database.
 
-##### Logical (row-based) log replication
+#### Logical (row-based) log replication
 
 Basically a sequence of records describing writes to database tables at the granularity of a row:
 * For an inserted row, the new values of all columns.
@@ -843,7 +858,7 @@ Since logical log is decoupled from the storage engine internals, it's easier to
 
 Logical logs are also easier for external applications to parse, useful for data warehouses, custom indexes and caches (_change data capture_).
 
-##### Trigger-based replication
+#### Trigger-based replication
 
 There are some situations were you may need to move replication up to the application layer.
 
@@ -886,7 +901,7 @@ Because of followers falling behind, it's possible for a user to see things _mov
 
 When you read data, you may see an old value; monotonic reads only means that if one user makes several reads in sequence, they will not see time go backward.
 
-Make sure that each user always makes their reads from the same replica. The replica can be chosen based on a hash of the user ID. If the replica fails, the user's queries will need to be rerouted to another replica.
+_Make sure that each user always makes their reads from the same replica._ The replica can be chosen based on a hash of the user ID. If the replica fails, the user's queries will need to be rerouted to another replica.
 
 #### Consistent prefix reads
 
