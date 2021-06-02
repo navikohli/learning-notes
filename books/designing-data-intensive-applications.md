@@ -355,11 +355,18 @@ Each edge consists of:
 * Label to describe the kind of relationship between the two vertices
 * A collection of properties (key-value pairs)
 
+![image](https://user-images.githubusercontent.com/1840450/120401255-9105ce00-c30d-11eb-8b4a-55b5cade28c1.png)
+
+
+
 Graphs provide a great deal of flexibility for data modelling. Graphs are good for evolvability.
 
 ---
 
 * _Cypher_ is a declarative language for property graphs created by Neo4j
+![image](https://user-images.githubusercontent.com/1840450/120401390-da561d80-c30d-11eb-8a1b-3482d1263e0e.png)
+![image](https://user-images.githubusercontent.com/1840450/120401435-f063de00-c30d-11eb-9d9d-40f7786b0d1f.png)
+
 * Graph queries in SQL. In a relational database, you usually know in advance which joins you need in your query. In a graph query, the number if joins is not fixed in advance. In Cypher `:WITHIN*0...` expresses "follow a `WITHIN` edge, zero or more times" (like the `*` operator in a regular expression). This idea of variable-length traversal paths in a query can be expressed using something called _recursive common table expressions_ (the `WITH RECURSIVE` syntax).
 
 ---
@@ -367,6 +374,8 @@ Graphs provide a great deal of flexibility for data modelling. Graphs are good f
 #### Triple-stores and SPARQL
 
 In a triple-store, all information is stored in the form of very simple three-part statements: _subject_, _predicate_, _object_ (peg: _Jim_, _likes_, _bananas_). A triple is equivalent to a vertex in graph.
+![image](https://user-images.githubusercontent.com/1840450/120401549-286b2100-c30e-11eb-96f7-5caf759e709c.png)
+![image](https://user-images.githubusercontent.com/1840450/120401585-3de04b00-c30e-11eb-8fe5-c93ec5dd851b.png)
 
 #### The SPARQL query language
 
@@ -409,6 +418,10 @@ As we only ever append to a file, so how do we avoid eventually running out of d
 We can also merge several segments together at the sae time as performing the compaction. Segments are never modified after they have been written, so the merged segment is written to a new file. Merging and compaction of frozen segments can be done in a background thread. After the merging process is complete, we switch read requests to use the new merged segment instead of the old segments, and the old segment files can simply be deleted.
 
 Each segment now has its own in-memory hash table, mapping keys to file offsets. In order to find a value for a key, we first check the most recent segment hash map; if the key is not present we check the second-most recent segment and so on. The merging process keeps the number of segments small, so lookups don't need to check many hash maps.
+![image](https://user-images.githubusercontent.com/1840450/120405342-57859080-c316-11eb-987a-bc4bbce66b9d.png)
+
+![image](https://user-images.githubusercontent.com/1840450/120405362-61a78f00-c316-11eb-8c1d-5411ab8fb87b.png)
+
 
 Some issues that are important in a real implementation:
 * File format. It is simpler to use binary format.
@@ -434,6 +447,9 @@ We call this _Sorted String Table_, or _SSTable_. We require that each key only 
 1. **Merging segments is simple and efficient** (we can use algorithms like _mergesort_). When multiple segments contain the same key, we can keep the value from the most recent segment and discard the values in older segments.
 2. **You no longer need to keep an index of all the keys in memory.** For a key like `handiwork`, when you know the offsets for the keys `handback` and `handsome`, you know `handiwork` must appear between those two. You can jump to the offset for `handback` and scan from there until you find `handiwork`, if not, the key is not present. You still need an in-memory index to tell you the offsets for some of the keys. One key for every few kilobytes of segment file is sufficient.
 3. Since read requests need to scan over several key-value pairs in the requested range anyway, **it is possible to group those records into a block and compress it** before writing it to disk.
+
+![image](https://user-images.githubusercontent.com/1840450/120405682-1fcb1880-c317-11eb-9b9d-5fc75f7b6def.png)
+
 
 How do we get the data sorted in the first place? With red-black trees or AVL trees, you can insert keys in any order and read them back in sorted order.
 * When a write comes in, add it to an in-memory balanced tree structure (_memtable_).
@@ -463,6 +479,9 @@ If you want to update the value for an existing key in a B-tree, you search for 
 
 Trees remain _balanced_. A B-tree with _n_ keys always has a depth of _O_(log _n_).
 
+![image](https://user-images.githubusercontent.com/1840450/120405965-c57e8780-c317-11eb-802d-bf51095da400.png)
+
+
 The basic underlying write operation of a B-tree is to overwrite a page on disk with new data. It is assumed that the overwrite does not change the location of the page, all references to that page remain intact. This is a big contrast to log-structured indexes such as LSM-trees, which only append to files.
 
 Some operations require several different pages to be overwritten. When you split a page, you need to write the two pages that were split, and also overwrite their parent. If the database crashes after only some of the pages have been written, you end up with a corrupted index.
@@ -473,7 +492,7 @@ Careful concurrency control is required if multiple threads are going to access,
 
 #### B-trees and LSM-trees
 
-LSM-trees are typically faster for writes, whereas B-trees are thought to be faster for reads. Reads are typically slower on LSM-tress as they have to check several different data structures and SSTables at different stages of compaction.
+**LSM-trees are typically faster for writes, whereas B-trees are thought to be faster for reads. Reads are typically slower on LSM-tress as they have to check several different data structures and SSTables at different stages of compaction.**
 
 Advantages of LSM-trees:
 * LSM-trees are typically able to sustain higher write throughput than B-trees, party because they sometimes have lower write amplification: a write to the database results in multiple writes to disk. The more a storage engine writes to disk, the fewer writes per second it can handle.
@@ -481,13 +500,13 @@ Advantages of LSM-trees:
 
 Downsides of LSM-trees:
 * Compaction process can sometimes interfere with the performance of ongoing reads and writes. B-trees can be more predictable. The bigger the database, the the more disk bandwidth is required for compaction. Compaction cannot keep up with the rate of incoming writes, if not configured properly you can run out of disk space.
-* On B-trees, each key exists in exactly one place in the index. This offers strong transactional semantics. Transaction isolation is implemented using locks on ranges of keys, and in a B-tree index, those locks can be directly attached to the tree.
+* On B-trees, each key exists in exactly one place in the index. This offers strong transactional semantics. **Transaction isolation is implemented using locks on ranges of keys, and in a B-tree index, those locks can be directly attached to the tree.**
 
 #### Other indexing structures
 
 We've only discussed key-value indexes, which are like _primary key_ index. There are also _secondary indexes_.
 
-A secondary index can be easily constructed from a key-value index. The main difference is that in a secondary index, the indexed values are not necessarily unique. There are two ways of doing this: making each value in the index a list of matching row identifiers or by making a each entry unique by appending a row identifier to it.
+A secondary index can be easily constructed from a key-value index. __The main difference is that in a secondary index, the indexed values are not necessarily unique.__ There are two ways of doing this: making each value in the index a list of matching row identifiers or by making a each entry unique by appending a row identifier to it.
 
 #### Full-text search and fuzzy indexes
 
@@ -512,6 +531,8 @@ Products such as VoltDB, MemSQL, and Oracle TimesTime are in-memory databases. R
 In-memory databases can be faster because they can avoid the overheads of encoding in-memory data structures in a form that can be written to disk.
 
 Another interesting area is that in-memory databases may provide data models that are difficult to implement with disk-based indexes.
+
+Recent research indicates that an in-memory database architecture could be extended to support datasets larger than the available memory, without bringing back the overheads of a disk-centric architecture [45]. The so-called anti-caching approach works by evicting the least recently used data from memory to disk when there is not enough memory, and loading it back into memory when it is accessed again in the future.
 
 ### Transaction processing or analytics?
 
