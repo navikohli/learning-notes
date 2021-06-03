@@ -1869,7 +1869,7 @@ ZooKeeper, etcd, and Consul are also often used for _service discovery_, find ou
 
 ZooKeeper and friends can be seen as part of a long history of research into _membership services_, determining which nodes are currently active and live members of a cluster.
 
-#Part III - Derived Data
+# Part III - Derived Data
 ## Batch processing
 
 * Service (online): waits for a request, sends a response back
