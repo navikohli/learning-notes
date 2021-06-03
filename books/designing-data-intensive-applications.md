@@ -1629,17 +1629,23 @@ Make a system appear as if there were only one copy of the data, and all operait
 
 If one client read returns the new value, all subsequent reads must also return the new value.
 
+![image](https://user-images.githubusercontent.com/1840450/120586826-3f8b3b00-c402-11eb-9847-75dbbcfd2dca.png)
+
 * `cas(x_old, v_old, v_new) => r` an atomic _compare-and-set_ operation. If the value of the register _x_ equals _v_old_, it is atomically set to _v_new_. If `x != v_old` the registers is unchanged and it returns an error.
 
-**Serializability**: Transactions behave the same as if they had executed _some_ serial order.
+![image](https://user-images.githubusercontent.com/1840450/120586944-72cdca00-c402-11eb-82a4-e49cb08e925a.png)
 
-**Linearizability**: Recency guarantee on reads and writes of a register (individual object).
+**Serializability**: is an isolation property of transactions. It guarantees that transactions behave the same as if they had executed in some serial order (each transaction running to completion before the next transaction starts). It is okay for that serial order to be different from the order in which transactions were actually run.
+
+**Linearizability**: Recency guarantee on reads and writes of a _register_ (individual object).
+
+A database may provide both serializability and linearizability, and this combination is known as strict serializability or strong one-copy serializability (strong-1SR).
 
 #### Locking and leader election
 
 To ensure that there is indeed only one leader, a lock is used. It must be linearizable: all nodes must agree which nodes owns the lock; otherwise is useless.
 
-Apache ZooKeepr and etcd are often used for distributed locks and leader election.
+Apache ZooKeeper and etcd are often used for distributed locks and leader election.
 
 #### Constraints and uniqueness guarantees
 
@@ -1651,9 +1657,9 @@ A hard uniqueness constraint in relational databases requires linearizability.
 
 The simplest approach would be to have a single copy of the data, but this would not be able to tolerate faults.
 
-* Single-leader repolication is potentially linearizable.
+* Single-leader repolication is potentially linearizable. If you make reads from the leader, or from synchronously updated followers, they have the potential to be linearizable.
 * Consensus algorithms is linearizable.
-* Multi-leader replication is not linearizable.
+* Multi-leader replication is not linearizable. They concurrently process writes on multiple nodes and asynchronously replicate them to other nodes. For this reason, they can produce conflicting writes that require resolution.
 * Leaderless replication is probably not linearizable.
 
 Multi-leader replication is often a good choice for multi-datacenter replication. On a network interruption betwen data-centers will force a choice between linearizability and availability.
@@ -1674,9 +1680,10 @@ CAP is sometimes presented as _Consistency, Availability, Partition tolerance: p
 
 CAP only considers one consistency model (linearizability) and one kind of fault (_network partitions_, or nodes that are alive but disconnected from each other). It doesn't say anything about network delays, dead nodes, or other trade-offs. CAP has been historically influential, but nowadays has little practical value for designing systems.
 
----
 
-The main reason for dropping linearizability is _performance_, not fault tolerance. Linearizabilit is slow and this is true all the time, not on only during a network fault.
+The main reason for dropping linearizability is _performance_, not fault tolerance. Linearizability is slow and this is true all the time, not on only during a network fault.
+
+---
 
 ### Ordering guarantees
 
@@ -1688,8 +1695,8 @@ Some cases one set is greater than another one.
 
 Different consistency models:
 
-* Linearizablity. _total order_ of operations: if the system behaves as if there is only a single copy of the data.
-* Causality. Two events are ordered if they are causally related. Causality defines _a partial order_, not a total one (incomparable if they are concurrent).
+* Linearizablity. _total order_ of operations: if the system behaves as if there is only a single copy of the data. Any two operations we can always say which one happened first.
+* Causality. Two events are ordered if they are causally related. Causality defines _a partial order_, not a total one (incomparable if they are concurrent). Causal order is not a total order.
 
 Linearizability is not the only way of preserving causality. **Causal consistency is the strongest possible consistency model that does not slow down due to network delays, and remains available in the face of network failures.**
 
@@ -1716,7 +1723,9 @@ Every node and every client keeps track of the _maximum_ counter value it has se
 
 As long as the maximum counter value is carried along with every operation, this scheme  ensure that the ordering from the lamport timestamp is consistent with causality.
 
-Total order of oepration only emerges after you have collected all of the operations.
+Total order of operation only emerges after you have collected all of the operations.
+
+![image](https://user-images.githubusercontent.com/1840450/120590115-05249c80-c408-11eb-8565-d469f01682cc.png)
 
 Total order broadcast:
 * Reliable delivery: If a message is delivered to one node, it is delivered to all nodes.
@@ -1726,7 +1735,7 @@ ZooKeeper and etcd implement total order broadcast.
 
 If every message represents a write to the database, and every replica processes the same writes in the same order, then the replcias will remain consistent with each other (_state machine replication_).
 
-A node is not allowed to retroactgively insert a message into an earlier position in the order if subsequent messages have already been dlivered.
+A node is not allowed to retroactgively insert a message into an earlier position in the order if subsequent messages have already been delivered.
 
 Another way of looking at total order broadcast is that it is a way of creating a _log_. Delivering a message is like appending to the log.
 
@@ -1764,11 +1773,15 @@ On a single node, transaction commitment depends on the _order_ in which data is
 
 When a participant votes "yes", it promises that it will definitely be able to commit later; and once the coordiantor decides, that decision is irrevocable. Those promises ensure the atomicity of 2PC.
 
+![image](https://user-images.githubusercontent.com/1840450/120592748-5b93da00-c40c-11eb-82b8-88afed86f16e.png)
+
 If one of the participants or the network fails during 2PC (prepare requests fail or time out), the coordinator aborts the transaction. If any of the commit or abort request fail, the coordinator retries them indefinitely.
 
 If the coordinator fails before sending the prepare requests, a participant can safely abort the transaction.
 
 The only way 2PC can complete is by waiting for the coordinator to revover in case of failure. This is why the coordinator must write its commit or abort decision to a transaction log on disk before sending commit or abort requests to participants.
+
+![image](https://user-images.githubusercontent.com/1840450/120592916-9bf35800-c40c-11eb-8888-379dfa6f95a0.png)
 
 #### Three-phase commit
 
@@ -1777,7 +1790,7 @@ The only way 2PC can complete is by waiting for the coordinator to revover in ca
 There is an alternative called _three-phase commit_ (3PC) that requires a _perfect failure detector_.
 
 ---
-
+#### Distributed Transactions in Practice
 Distributed transactions carry a heavy performance penalty due the disk forcing in 2PC required for crash recovery and additional network round-trips.
 
 XA (X/Open XA for eXtended Architecture) is a standard for implementing two-phase commit across heterogeneous technologies. Supported by many traditional relational databases (PostgreSQL, MySQL, DB2, SQL Server, and Oracle) and message brokers (ActiveMQ, HornetQ, MSQMQ, and IBM MQ).
@@ -1800,7 +1813,7 @@ Consensus algorithm must satisfy the following properties:
 
 If you don't care about fault tolerance, then satisfying the first three properties is easy: you can just hardcode one node to be the "dictator" and let that node make all of the decisions.
 
-The termination property formalises the idea of fault tolerance. Even if some nodes fail, the other nodes must still reach a decision. Termination is a liveness property, whereas the other three are safety properties.
+The termination property formalises the idea of fault tolerance. Even if some nodes fail, the other nodes must still reach a decision. *Termination is a liveness property, whereas the other three are safety properties.*
 
 **The best-known fault-tolerant consensus algorithms are Viewstamped Replication (VSR), Paxos, Raft and Zab.**
 
@@ -1814,7 +1827,7 @@ So total order broadcast is equivalent to repeated rounds of consensus:
 
 ##### Single-leader replication and consensus
 
-All of the consensus protocols dicussed so far internally use a leader, but they don't guarantee that the lader is unique. Protocols define an _epoch number_ (_ballot number_ in Paxos, _view number_ in Viewstamped Replication, and _term number_ in Raft). Within each epoch, the leader is unique.
+All of the consensus protocols dicussed so far internally use a leader, but they don't guarantee that the leader is unique. Protocols define an _epoch number_ (_ballot number_ in Paxos, _view number_ in Viewstamped Replication, and _term number_ in Raft). Within each epoch, the leader is unique.
 
 Every time the current leader is thought to be dead, a vote is started among the nodes to elect a new leader. This election is given an incremented epoch number, and thus epoch numbers are totallly ordered and monotonically increasing. If there is a conflic, the leader with the higher epoch number prevails.
 
@@ -1856,6 +1869,7 @@ ZooKeeper, etcd, and Consul are also often used for _service discovery_, find ou
 
 ZooKeeper and friends can be seen as part of a long history of research into _membership services_, determining which nodes are currently active and live members of a cluster.
 
+#Part III - Derived Data
 ## Batch processing
 
 * Service (online): waits for a request, sends a response back
