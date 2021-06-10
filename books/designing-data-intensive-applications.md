@@ -2135,15 +2135,17 @@ To scale to higher throughput than a single disk can offer, the log can be _part
 
 Within each partition, the broker assigns monotonically increasing sequence number, or _offset_, to every message.
 
+![image](https://user-images.githubusercontent.com/1840450/121467425-09603500-c987-11eb-92fb-d314247d2285.png)
+
 Apache Kafka, Amazon Kinesis Streams, and Twitter's DistributedLog, are log-based message brokers that work like this.
 
 The log-based approach trivially supports fan-out messaging, as several consumers can independently read the log reading without affecint each other. Reading a message does not delete it from the log. To eachieve load balancing the broker can assign entire partitions to nodes in the consumer group. Each client then consumes _all_ the messages in the partition it has been assigned. This approach has some downsides.
 * The number of nodes sharing the work of consuming a topic can be at most the number of log partitions in that topic.
 * If a single message is slow to process, it holds up the processing of subsequent messages in that partition.
 
-In situations where messages may be expensive to process and you want to pararellise processing on a message-by-message basis, and where message ordering is not so important, the JMS/AMQP style of message broker is preferable. In situations with high message throughput, where each message is fast to process and where message ordering is important, the log-based approach works very well.
+In situations where **messages may be expensive to process and you want to parallelize processing** on a message-by-message basis, and where **message ordering is not so important** , the **JMS/AMQP style of message broker is preferable**. In situations with high message throughput, where each message is fast to process and where message ordering is important, the log-based approach works very well.
 
-It is easy to tell which messages have been processed: al messages with an offset less than a consumer current offset have already been processed, and all messages with a greater offset have not yet been seen.
+It is easy to tell which messages have been processed: all messages with an offset less than a consumer current offset have already been processed, and all messages with a greater offset have not yet been seen.
 
 The offset is very similar to the _log sequence number_ that is commonly found in single-leader database replication. The message broker behaves like a leader database, and the consumer like a follower.
 
@@ -2151,7 +2153,7 @@ If a consumer node fails, another node in the consumer group starts consuming me
 
 If you only ever append the log, you will eventually run out of disk space. From time to time old segments are deleted or moved to archive.
 
-If a slow consumer cannot keep with the rate of messages, and it falls so far behind that its consumer offset poitns to a deleted segment, it will miss some of the messages.
+If a slow consumer cannot keep with the rate of messages, and it falls so far behind that its consumer offset points to a deleted segment, it will miss some of the messages.
 
 The throughput of a log remains more or less constant, since every message is written to disk anyway. This is in contrast to messaging systems that keep messages in memory by default and only write them to disk if the queue grows too large: systems are fast when queues are short and become much slower when they start writing to disk, throughput depends on the amount of history retained.
 
@@ -2163,15 +2165,17 @@ If a consumer does fall too far behind and start missing messages, only that con
 
 With AMQP and JMS-style message brokers, processing and acknowledging messages is a destructive operation, since it causes the messages to be deleted on the broker. In a log-based message broker, consuming messages is more like reading from a file.
 
-The offset is under the consumer's control, so you can easily be manipulated if necessary, like for replaying old messages.
+The offset is under the consumer's control, so it can easily be manipulated if necessary, like for replaying old messages.
 
 ### Databases and streams
 
-A replciation log is a stream of a database write events, produced by the leader as it processes transactions. Followers apply that stream of writes to their own copy of the database and thus end up with an accurate copy of the same data.
+A replication log is a stream of a database write events, produced by the leader as it processes transactions. Followers apply that stream of writes to their own copy of the database and thus end up with an accurate copy of the same data.
 
 If periodic full database dumps are too slow, an alternative that is sometimes used is _dual writes_. For example, writing to the database, then updating the search index, then invalidating the cache.
 
 Dual writes have some serious problems, one of which is race conditions. If you have concurrent writes, one value will simply silently overwrite another value.
+
+![image](https://user-images.githubusercontent.com/1840450/121468521-e9317580-c988-11eb-8780-0f9059254c58.png)
 
 One of the writes may fail while the other succeeds and two systems will become inconsistent.
 
@@ -2181,7 +2185,9 @@ Recently there has been a growing interest in _change data capture_ (CDC), which
 
 For example, you can capture the changes in a database and continually apply the same changes to a search index.
 
-We can call log consumers _derived data systems_: the data stored in the search index and the data warehouse is just another view. Change data capture is a mechanism for ensuring that all changes made to the system of record are also reflected in the derived data systems.
+We can call log consumers _derived data systems_: the data stored in the search index and the data warehouse is just another view. **Change data capture is a mechanism for ensuring that all changes made to the system of record are also reflected in the derived data systems.**
+
+![image](https://user-images.githubusercontent.com/1840450/121468582-09613480-c989-11eb-9f13-f0a61e66d687.png)
 
 Change data capture makes one database the leader, and turns the others into followers.
 
@@ -2207,15 +2213,15 @@ Kafka Connect integrates change data capture tools for a wide range of database 
 
 There are some parallels between the ideas we've discussed here and _event sourcing_.
 
-Similarly to change data capture, event sourcing involves storing all changes to the application state as a log of change events. Event sourcing applyies the idea at a different level of abstraction.
+Similarly to change data capture, event sourcing involves storing all changes to the application state as a log of change events. Event sourcing applies the idea at a different level of abstraction.
 
 Event sourcing makes it easier to evolve applications over time, helps with debugging by making it easier to understand after the fact why something happened, and guards against application bugs.
 
 Specialised databases such as Event Store have been developed to support applications using event sourcing.
 
-Applications that use event sourcing need to take the log of evetns and transform it into application state that is suitable for showing to a user.
+Applications that use event sourcing need to take the log of events and transform it into application state that is suitable for showing to a user.
 
-Replying the event log allows you to reconstruct the current state of the system.
+Replaying the event log allows you to reconstruct the current state of the system.
 
 Applications that use event sourcing typically have some mechanism for storing snapshots.
 
@@ -2223,13 +2229,14 @@ Event sourcing philosophy is careful to distinguis between _events_ and _command
 
 A consumer of the event stream is not allowed to reject an event: Any validation of a command needs to happen synchronously, before it becomes an event. For example, by using a serializable transaction that atomically validates the command and publishes the event.
 
-Alternatively, the user request to serve a seat could be split into two events: first a tentative reservation, and then a separate confirmation event once the reservation has been validated. This split allows the validation to take place in an asynchronous process.
+Alternatively, the user request to reserve a seat could be split into two events: first a tentative reservation, and then a separate confirmation event once the reservation has been validated. This split allows the validation to take place in an asynchronous process.
 
+#### State, Streams and Immutability
 Whenever you have state changes, that state is the result of the events that mutated it over time.
 
 Mutable state and an append-only log of immutable events do not contradict each other.
 
-As an example, financial bookkeeping is recorded as an append-only _ledger_. It is a log of events describing money, good, or services that have changed hands. Profit and loss or the balance sheet are derived from the ledger by adding them up.
+As an example, financial bookkeeping is recorded as an append-only _ledger_. It is a log of events describing money, good, or services that have changed hands. Profit and loss for the balance sheet are derived from the ledger by adding them up.
 
 If a mistake is made, accountants don't erase or change the incorrect transaction, instead, they add another transaction that compensates for the mistake.
 
@@ -2237,7 +2244,7 @@ If buggy code writes bad data to a database, recovery is much harder if the code
 
 Immutable events also capture more information than just the current state. If you persisted a cart into a regular database, deleting an item would effectively loose that event.
 
-You can derive views from the same event log, Druid ingests directly from Kafka, Pistachio is a distributed key-value sotre that uses Kafka as a commit log, Kafka Connect sinks can export data from Kafka to various different databases and indexes.
+You can derive views from the same event log, Druid ingests directly from Kafka, Pistachio is a distributed key-value store that uses Kafka as a commit log, Kafka Connect sinks can export data from Kafka to various different databases and indexes.
 
 Storing data is normally quite straightforward if you don't have to worry about how it is going to be queried and accessed. You gain a lot of flexibility by separating the form in which data is written from the form it is read, this idea is known as _command query responsibility segregation_ (CQRS).
 
@@ -2245,7 +2252,7 @@ There is this fallacy that data must be written in the same form as it will be q
 
 The biggest downside of event sourcing and change data capture is that consumers of the event log are usually asynchronous, a user may make a write to the log, then read from a log derived view and find that their write has not yet been reflected.
 
-The limitations on immutable event history depends on the amount of churn in the dataset. Some workloads mostly add data and rarely update or delete; they are wasy to make immutable. Other workloads have a high rate of updates and deletes on a comparaively small dataset; in these cases immutable history becomes an issue because of fragmentation, performance compaction and garbage collection.
+The limitations on immutable event history depends on the amount of churn in the dataset. Some workloads mostly add data and rarely update or delete; they are easy to make immutable. Other workloads have a high rate of updates and deletes on a comparaively small dataset; in these cases immutable history becomes an issue because of fragmentation, performance compaction and garbage collection.
 
 There may also be circumstances in which you need data to be deleted for administrative reasons.
 
