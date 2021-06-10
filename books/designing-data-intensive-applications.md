@@ -2059,7 +2059,7 @@ Graph algorithms often have a lot of cross-machine communication overhead, and t
 
 If your graph can fit into memory on a single computer, it's quite likely that a single-machine algorithm will outperform a distributed batch process. If the graph is too big to fit on a single machine, a distributed approach such as Pregel is unavoidable.
 
-## Stream processing
+## 11. Stream processing
 
 We can run the processing continuously, abandoning the fixed time slices entirely and simply processing every event as it happens, that's the idea behind _stream processing_. Data that is incrementally made available over time.
 
@@ -2067,7 +2067,7 @@ We can run the processing continuously, abandoning the fixed time slices entirel
 
 A record is more commonly known as an _event_. Something that happened at some point in time, it usually contains a timestamp indicating when it happened acording to a time-of-day clock.
 
-An event is generated once by a _producer_ (_publisher_ or _sender_), and then potentially processed by multiple _consumers_ (_subcribers_ or _recipients_). Related events are usually grouped together into a _topic_ or a _stream_.
+**An event is generated once by a _producer_ (_publisher_ or _sender_), and then potentially processed by multiple _consumers_ (_subcribers_ or _recipients_). Related events are usually grouped together into a _topic_ or a _stream_.**
 
 A file or a database is sufficient to connect producers and consumers: a producer writes every event that it generates to the datastore, and each consumer periodically polls the datastore to check for events that have appeared since it last ran.
 
@@ -2084,10 +2084,10 @@ Within the _publish_/_subscribe_ model, we can differentiate the systems by aski
 2. _What happens if nodes crash or temporarily go offline, are any messages lost?_ Durability may require some combination of writing to disk and/or replication.
 
 A number of messaging systems use direct communication between producers and consumers without intermediary nodes:
-* UDP multicast, where low latency is important, application-level protocols can recover lost packets.
-* Brokerless messaging libraries such as ZeroMQ
-* StatsD and Brubeck use unreliable UDP messaging for collecting metrics
-* If the consumer expose a service on the network, producers can make a direct HTTP or RPC request to push messages to the consumer. This is the idea behind webhooks, a callback URL of one service is registered with another service, and makes a request to that URL whenever an event occurs
+* **UDP multicast**, where low latency is important, application-level protocols can recover lost packets.
+* **Brokerless messaging** libraries such as ZeroMQ
+* StatsD and Brubeck use unreliable **UDP messaging** for collecting metrics
+* If the consumer expose a service on the network, producers can make a direct HTTP or RPC request to push messages to the consumer. This is the idea behind **webhooks**, a callback URL of one service is registered with another service, and makes a request to that URL whenever an event occurs
 
 These direct messaging systems require the application code to be aware of the possibility of message loss. The faults they can tolerate are quite limited as they assume that producers and consumers are constantly online.
 
@@ -2097,9 +2097,9 @@ If a consumer if offline, it may miss messages. Some protocols allow the produce
 
 An alternative is to send messages via a _message broker_ (or _message queue_), which is a kind of database that is optimised for handling message streams. It runs as a server, with producers and consumers connecting to it as clients. Producers write messages to the broker, and consumers receive them by reading them from the broker.
 
-By centralising the data, these systems can easily tolerate clients that come and go, and the question of durability is moved to the broker instead. Some brokers only keep messages in memory, while others write them down to disk so that they are not lost inc ase of a broker crash.
+By centralising the data, these systems can easily tolerate clients that come and go, and **the question of durability is moved to the broker instead.** Some brokers only keep messages in memory, while others write them down to disk so that they are not lost in case of a broker crash.
 
-A consequence of queueing is that consuemrs are generally _asynchronous_: the producer only waits for the broker to confirm that it has buffered the message and does not wait for the message to be processed by consumers.
+A consequence of queueing is that consuemrs are generally _asynchronous_: the producer only waits for the broker to confirm that it has buffered the message and **does not wait for the message to be processed by consumers.**
 
 Some brokers can even participate in two-phase commit protocols using XA and JTA. This makes them similar to databases, aside some practical differences:
 * Most message brokers automatically delete a message when it has been successfully delivered to its consumers. This makes them not suitable for long-term storage.
@@ -2109,17 +2109,21 @@ Some brokers can even participate in two-phase commit protocols using XA and JTA
 
 This is the traditional view of message brokers, encapsulated in standards like JMS and AMQP, and implemented in RabbitMQ, ActiveMQ, HornetQ, Qpid, TIBCO Enterprise Message Service, IBM MQ, Azure Service Bus, and Google Cloud Pub/Sub.
 
-When multiple consumers read messages in the same topic, to main patterns are used:
-* Load balancing: Each message is delivered to _one_ of the consumers. The broker may assign messages to consumers arbitrarily.
-* Fan-out: Each message is delivered to _all_ of the consumers.
+When multiple consumers read messages in the same topic, to main _patterns_ are used:
+* **Load balancing**: Each message is delivered to _one_ of the consumers. The broker may assign messages to consumers arbitrarily.
+* **Fan-out**: Each message is delivered to _all_ of the consumers.
+
+![image](https://user-images.githubusercontent.com/1840450/121464725-66a5b780-c982-11eb-89f3-6a8dfacc5f16.png)
 
 In order to ensure that the message is not lost, message brokers use _acknowledgements_: a client must explicitly tell the broker when it has finished processing a message so that the broker can remove it from the queue.
 
-The combination of laod balancing with redelivery inevitably leads to messages being reordered. To avoid this issue, youc an use a separate queue per consumer (not use the load balancing feature).
+The combination of load balancing with redelivery inevitably leads to messages being reordered. To avoid this issue, you can use a separate queue per consumer (not use the load balancing feature).
+
+![image](https://user-images.githubusercontent.com/1840450/121464770-8046ff00-c982-11eb-874f-f1a8de9248c5.png)
 
 ##### Partitioned logs
 
-A key feature of barch process is that you can run them repeatedly without the risk of damaging the input. This is not the case with AMQP/JMS-style messaging: receiving a message is destructive if the acknowledgement causes it to be deleted from the broker.
+A key feature of batch process is that you can run them repeatedly without the risk of damaging the input. This is not the case with AMQP/JMS-style messaging: receiving a message is destructive if the acknowledgement causes it to be deleted from the broker.
 
 If you add a new consumer to a messaging system, any prior messages are already gone and cannot be recovered.
 
